@@ -16,6 +16,29 @@ def play_midi_note_async(note=72, duration=0.5, velocity=100):
         time.sleep(duration)
         fs.noteoff(0, note)
     threading.Thread(target=worker, daemon=True).start()
+    
+def play_chord(notes, duration=0.5, velocity=100):
+    def worker():
+        for note in notes:
+            fs.noteon(0, note, velocity)
+        time.sleep(duration)
+        for note in notes:
+            fs.noteoff(0, note)
+    threading.Thread(target=worker, daemon=True).start()
+
+def is_hand_open(kpts):
+    # kpts shape: (num_keypoints, 2)
+    wrist_x, wrist_y = kpts[0]  # wrist
+    fingertip_ids = [4, 8, 12, 16, 20]  # thumb, index, middle, ring, pinky
+    
+    dists = []
+    for i in fingertip_ids:
+        if i < len(kpts):
+            fx, fy = kpts[i]
+            dists.append(((fx - wrist_x)**2 + (fy - wrist_y)**2)**0.5)
+    avg_dist = sum(dists) / len(dists)
+    # print("Avg dist:", avg_dist)
+    return avg_dist > 300
 
 # Load your trained model
 model = YOLO("runs/pose/train/weights/best.pt")
@@ -23,11 +46,6 @@ model = YOLO("runs/pose/train/weights/best.pt")
 # RTMP stream URL from MediaMTX
 rtmp_url = "rtmp://localhost:1935/s/streamKey"
 cap = cv2.VideoCapture(rtmp_url)
-
-start_time = time.time()
-
-frame_count = 0
-print_interval = 30  # print every 30 frames
 
 if not cap.isOpened():
     print("Error: Could not open RTMP stream")
@@ -50,17 +68,9 @@ while True:
             # Get keypoints
             kpts = result.keypoints.xy[0].cpu().numpy()
             
-            # Index finger tip is usually keypoint 8 (adjust if needed)
-            INDEX_FINGER_TIP = 8
-            
             # Check if index finger tip exists
-            if len(kpts) > INDEX_FINGER_TIP:
-                tip_x, tip_y = kpts[INDEX_FINGER_TIP]
-                
-                # If coordinates are not zero, finger tip is detected
-                if tip_x > 0 and tip_y > 0:
-                    play_midi_note_async(72)
-                    # print("Index finger tip detected!")
+            if len(kpts) > 20 and is_hand_open(kpts):
+                play_chord([60, 64, 67], duration=1.0)
         
         # Display locally
         cv2.imshow("YOLO Overlay", annotated_frame)
