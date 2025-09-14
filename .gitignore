@@ -2,3 +2,4 @@
 venv/
 venv311/
 runs/pose/output/
+.DS_Store
